@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nova Arcade — Play Something Good</title>
+<title>Atlas Notes – Study Smarter</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📘</text></svg>">
 <style>
 :root{--bg:#f6f7fb;--fg:#1c2233;--card:#fff;--muted:#6b7390;--acc:#4f6bff;--line:#e3e6f0}
@@ -41,10 +41,11 @@ nav a{color:var(--muted);margin-left:22px;text-decoration:none;font-size:14px}
 #stage iframe,#pbox iframe{width:100%;height:72vh;border:1px solid #ffffff14;border-radius:14px;background:#fff}
 canvas{background:#05060d;border:1px solid #ffffff22;border-radius:14px;display:block;margin:auto;max-width:100%}
 .bar{display:flex;gap:8px;margin-bottom:14px}
-.bar input,.field{background:#ffffff0d;border:1px solid #ffffff1a;color:#fff;border-radius:10px;padding:11px 14px;outline:none;font-size:14px}
+.bar input,.field{background:#ffffff0d;border:1px solid #ffffff1a;color:#fff;border-radius:10px;padding:11px 14px;outline:none;font-size:14px;font-family:inherit}
+textarea.field{resize:vertical}
 .bar input{flex:1}
 .bar button,.btn{background:linear-gradient(90deg,#6c5cff,#00b8ff);border:0;color:#fff;border-radius:10px;padding:10px 18px;cursor:pointer}
-.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}.btn.red{background:#d6455d}.btn.gray{background:#ffffff1f}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}.btn.red{background:#d6455d}.btn.gray{background:#ffffff1f}.btn.green{background:#1f9d55}
 #log{height:50vh;overflow:auto;background:#ffffff08;border:1px solid #ffffff14;border-radius:14px;padding:14px;margin-bottom:12px}
 .m{margin:6px 0;font-size:14px}.m i{color:#8b7bff;font-style:normal;font-weight:700}.m.sys{color:#e6a23c;font-style:italic}
 .m .x{margin-left:8px;cursor:pointer;color:#d6455d}
@@ -59,68 +60,29 @@ td,th{padding:8px;border-bottom:1px solid #ffffff14;text-align:left}
 .badge{font-size:11px;border-radius:6px;padding:2px 6px;margin-right:4px}
 .b-on{background:#1f9d55}.b-mute{background:#c9871f}.b-ban{background:#d6455d}.b-adm{background:#6c5cff}
 h3{margin:22px 0 8px}
-
-/* ---- nova arcade visual refresh ---- */
-:root{color-scheme:dark;--bg:#080a12;--fg:#edf0ff;--card:#111626;--muted:#9ca7c8;--acc:#8b5cf6;--line:#252d45}
-body{background:#080a12;color:#edf0ff}
-#front{min-height:100vh;background:radial-gradient(ellipse at 15% 0%,#6338bd40,transparent 38%),radial-gradient(ellipse at 90% 25%,#00c8ff24,transparent 34%),#080a12;color:#edf0ff}
-nav{border-bottom:1px solid #ffffff14;background:#080a12cc;backdrop-filter:blur(14px)}
-.logo{font-size:22px;letter-spacing:.4px;color:#f4f5ff}.logo span{color:#9c7cff}
-nav a{color:#aeb8d6}nav a:hover{color:#fff}
-.hero{padding:clamp(70px,11vw,130px) 6vw 42px}
-.hero h1{font-size:clamp(38px,7vw,76px);letter-spacing:-2px;line-height:1.04;background:linear-gradient(100deg,#fff 20%,#b9a7ff 58%,#6ee7ff);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero p{color:#aab3d2;font-size:17px;line-height:1.7}
-.search{background:#111626;border-color:#ffffff1a;border-radius:16px;box-shadow:0 18px 60px #0006}
-.search input{color:#fff}.search button{background:linear-gradient(100deg,#7654f6,#06b6d4);font-weight:700;padding:13px 22px}
-.grid{max-width:1150px;margin:auto;padding-top:24px}
-.card{background:linear-gradient(145deg,#151b2e,#0f1320);border-color:#ffffff14;border-radius:18px;transition:transform .18s,border-color .18s}
-.card:hover{transform:translateY(-4px);border-color:#8b7bff88}
-.card h3{color:#f4f5ff}.card p{color:#9ca7c8}
-#hub{background-color:#080a12;background-image:radial-gradient(circle at 15% 0%,#5636a744,transparent 43%),radial-gradient(circle at 95% 15%,#00bde51c,transparent 38%)}
-#hub header{background:#080a12dd;border-bottom-color:#ffffff18;backdrop-filter:blur(18px);padding:15px max(5vw,18px)}
-#hub .brand{font-size:22px;letter-spacing:.6px}
-.tab{background:#ffffff08;border-color:#ffffff18;color:#cbd3ee;transition:background .15s,border-color .15s,transform .15s}
-.tab:hover{background:#ffffff14;border-color:#9c8bff88}
-.tab.on{background:linear-gradient(105deg,#7654f6,#0ea5e9);box-shadow:0 5px 20px #7654f633}
-.panel{max-width:1300px;margin:0 auto;padding:28px max(5vw,18px)}
-.games{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:18px}
-.g{background:linear-gradient(150deg,#171d31,#0e1220);border-color:#ffffff16;border-radius:18px;padding:22px 16px;min-height:120px}
-.g:hover{border-color:#9c8bff;box-shadow:0 12px 32px #6c5cff33}
-.g .ic{font-size:44px;filter:drop-shadow(0 5px 14px #7c6aff33)}
-.g b{color:#f2f4ff;font-size:15px}
-#stage{background:#ffffff04;border:1px solid #ffffff12;border-radius:18px;padding:14px;min-height:40px}
-#stage:empty{display:none}
-#stage iframe,#pbox iframe{border-color:#ffffff1a;border-radius:14px}
-.bar input,.field{background:#0d1220;border-color:#ffffff20;color:#fff;border-radius:11px}
-.bar input:focus,.field:focus,.search:focus-within,.rec-search:focus{border-color:#8b7bff;box-shadow:0 0 0 3px #8b7bff20}
-.bar button,.btn{background:linear-gradient(105deg,#7654f6,#0ea5e9);font-weight:650}
-#log{background:#0c1120;border-color:#ffffff16}
-#auth{background:#111626b8;border:1px solid #ffffff18;border-radius:20px;padding:28px;margin-top:48px;box-shadow:0 20px 70px #0004}
-#auth h2{margin-top:0}
-table{color:#dfe5ff}td,th{border-bottom-color:#ffffff14}
-.rec-search{width:100%;max-width:520px;display:block;margin:18px 0 24px;background:#0d1220;border:1px solid #ffffff20;color:#fff;border-radius:12px;padding:13px 15px;font-size:15px;outline:none}
-.rec-card{display:flex;flex-direction:column;gap:10px;min-height:190px;text-align:left;background:linear-gradient(150deg,#171d31,#0e1220);border:1px solid #ffffff16;border-radius:18px;padding:20px;transition:transform .18s,border-color .18s}
-.rec-card:hover{transform:translateY(-4px);border-color:#8b7bff;box-shadow:0 12px 30px #6c5cff24}
-.rec-top{display:flex;align-items:center;gap:12px}.rec-icon{font-size:32px}.rec-card h3{margin:0;color:#f3f4ff;font-size:17px}.rec-tag{display:inline-flex;align-self:flex-start;border:1px solid #8b7bff55;background:#8b7bff18;color:#c9bcff;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700}.rec-card p{color:#aab3d2;line-height:1.55;font-size:13px;margin:0;flex:1}.rec-link{display:inline-flex;align-self:flex-start;color:#91e9ff;text-decoration:none;font-weight:700;font-size:13px}.rec-link:hover{color:#fff}
-@media(max-width:650px){nav{gap:12px;align-items:flex-start;flex-direction:column}nav a{margin:0 14px 0 0}.hero{padding-top:64px}.hero h1{letter-spacing:-1px}#hub header{gap:7px}#hub .brand{width:100%;margin-bottom:4px}.tab{padding:8px 11px}.panel{padding-top:20px}.bar{flex-wrap:wrap}.bar input{min-width:120px}}
-
+.sg{background:#ffffff0a;border:1px solid #ffffff14;border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.sg h4{margin:0 0 4px;font-size:15px}
+.sg p{margin:6px 0;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.sg .meta{color:#9aa2c8;font-size:12px}
+.sg .reply{border-left:3px solid #8b7bff;padding-left:10px;margin-top:8px;font-size:13px;color:#cfd4ee}
+.sg .acts{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 
 <div id="front">
-  <nav><div class="logo">⚡ NOVA <span>ARCADE</span></div>
-    <div><a href="#games" onclick="document.getElementById('q').value='67';document.getElementById('sf').requestSubmit();return false">Enter Arcade</a><a href="#front">Discover</a></div></nav>
+  <nav><div class="logo">Atlas<span>Notes</span></div>
+    <div><a href="#">Notebooks</a><a href="#">Flashcards</a><a href="#">Pricing</a><a href="#">Sign in</a></div></nav>
   <section class="hero">
-    <h1>your next game<br>starts here.</h1>
-    <p>jump into quick classics, discover your next favorite, and hang out with the arcade crew.</p>
-    <form class="search" id="sf"><input id="q" placeholder="enter the arcade..." autocomplete="off"><button>Search</button></form>
+    <h1>Study smarter, not harder.</h1>
+    <p>Search millions of notes, flashcards and study guides from students around the world.</p>
+    <form class="search" id="sf"><input id="q" placeholder="Search notes, subjects, topics…" autocomplete="off"><button>Search</button></form>
   </section>
   <section class="grid">
-    <div class="card"><h3>🐍 quick-play classics</h3><p>easy to jump into, hard to put down.</p></div>
-    <div class="card"><h3>🎯 discover games</h3><p>find something new for your next session.</p></div>
-    <div class="card"><h3>💬 arcade chat</h3><p>talk with other players in the hub.</p></div>
-    <div class="card"><h3>✨ one hub, more fun</h3><p>games, recommendations, and more in one place.</p></div>
+    <div class="card"><h3>📐 Algebra II</h3><p>1,204 notes · Updated today</p></div>
+    <div class="card"><h3>🧬 Biology Unit 4</h3><p>860 flashcards</p></div>
+    <div class="card"><h3>📜 U.S. History</h3><p>2,310 study guides</p></div>
+    <div class="card"><h3>⚗️ Chemistry Lab</h3><p>540 notes</p></div>
   </section>
 </div>
 
@@ -129,9 +91,9 @@ table{color:#dfe5ff}td,th{border-bottom-color:#ffffff14}
     <div class="brand">⚡ NOVA ARCADE</div>
     <span id="who" class="note appOnly" style="margin:0 8px"></span>
     <button class="tab on appOnly" data-t="games">Games</button>
-    <button class="tab appOnly" data-t="recommendations">Recommendations</button>
     <button class="tab appOnly" data-t="chat">Chat</button>
     <button class="tab appOnly" data-t="proxy">Proxy</button>
+    <button class="tab appOnly" data-t="suggest" id="sgtab">Suggestions</button>
     <button class="tab appOnly" data-t="admin" id="admintab" style="display:none">Admin</button>
     <button class="tab appOnly" id="logout">Log out</button>
     <button class="tab" id="exit">Hide (Esc)</button>
@@ -154,13 +116,6 @@ table{color:#dfe5ff}td,th{border-bottom-color:#ffffff14}
     <div id="stage"></div>
   </div>
 
-  <div class="panel" id="recommendations">
-    <h2>🎯 game recommendations</h2>
-    <p class="note">find your next game based on what you're in the mood for.</p>
-    <input id="recSearch" class="rec-search" placeholder="Search games, genres, or vibes..." autocomplete="off">
-    <div class="games" id="recList"></div>
-  </div>
-
   <div class="panel" id="chat">
     <div id="log"></div>
     <form class="bar" id="cf"><input id="ci" placeholder="Say something…" autocomplete="off" maxlength="300"><button>Send</button></form>
@@ -173,29 +128,36 @@ table{color:#dfe5ff}td,th{border-bottom-color:#ffffff14}
     <div id="pbox"></div>
   </div>
 
+  <div class="panel" id="suggest">
+    <h3 style="margin-top:0">Suggest a game or feature</h3>
+    <form id="sgf" style="display:flex;flex-direction:column;gap:10px;max-width:560px">
+      <input class="field" id="sgt" placeholder="Title (e.g. Add the game Slope)" maxlength="80">
+      <textarea class="field" id="sgx" rows="4" placeholder="Details (optional): link, why you want it, etc." maxlength="500"></textarea>
+      <button class="btn">Submit suggestion</button>
+      <p class="note" id="sgm"></p>
+    </form>
+    <h3 id="sglabel">Your suggestions</h3>
+    <div id="sgfilters" style="display:none;margin-bottom:12px">
+      <button class="tab on" data-f="all">All</button>
+      <button class="tab" data-f="pending">Pending</button>
+      <button class="tab" data-f="approved">Added</button>
+      <button class="tab" data-f="rejected">Rejected</button>
+    </div>
+    <div id="sglist"></div>
+  </div>
+
   <div class="panel" id="admin"></div>
 </div>
 
-<script src="/config.js"></script>
 <script>
 /* ================= CONFIG ================= */
 const SECRET = "67";
-const REMOTE_WS = window.NOVA_REMOTE_WS || ""; // set REMOTE_WS in the server environment
+const REMOTE_WS = "wss://attend-allowed-represented-lying.trycloudflare.com/ws"; // changes whenever you restart cloudflared
 const GAMES = [
   {name:"Chrome", icon:"🌐", builtin:"remote"},
   {name:"Snake", icon:"🐍", builtin:"snake"},
   {name:"Clicker", icon:"🖱️", builtin:"clicker"},
   // {name:"My Game", icon:"🎮", url:"https://cdn.jsdelivr.net/gh/YOURUSER/YOURREPO@main/games/mygame/index.html"},
-];
-const RECOMMENDATIONS = [
-  {name:"Team Fortress 2",icon:"🧢",genre:"Team shooter",desc:"A goofy, fast-paced class-based shooter with loads of personality.",url:"https://store.steampowered.com/app/440/Team_Fortress_2/"},
-  {name:"Unturned",icon:"🧟",genre:"Survival",desc:"Scavenge, build, and survive in a blocky zombie sandbox.",url:"https://store.steampowered.com/app/304930/Unturned/"},
-  {name:"Brawlhalla",icon:"🥊",genre:"Fighting",desc:"Free platform fighting with quick matches and a big roster.",url:"https://store.steampowered.com/app/291550/Brawlhalla/"},
-  {name:"Warframe",icon:"🚀",genre:"Action RPG",desc:"Fast sci-fi missions, space ninjas, and tons of gear to unlock.",url:"https://store.steampowered.com/app/230410/Warframe/"},
-  {name:"Left 4 Dead 2",icon:"🧟‍♂️",genre:"Co-op shooter",desc:"Team up with friends for chaotic zombie runs and replayable campaigns.",url:"https://store.steampowered.com/app/550/Left_4_Dead_2/"},
-  {name:"Trackmania",icon:"🏎️",genre:"Racing",desc:"Build your racing skills on wild tracks and chase better times.",url:"https://store.steampowered.com/app/2225070/Trackmania/"},
-  {name:"Geometry Dash",icon:"🎵",genre:"Rhythm platformer",desc:"Tight timing, catchy music, and challenging levels.",url:"https://store.steampowered.com/app/322170/Geometry_Dash/"},
-  {name:"Unciv",icon:"🌍",genre:"Strategy",desc:"A lightweight, open-source civilization-style strategy game.",url:"https://github.com/yairm210/Unciv/releases"}
 ];
 /* ========================================== */
 
@@ -206,7 +168,7 @@ const api=async(path,body)=>{
   let d={};try{d=await r.json()}catch{}
   if(!r.ok)throw new Error(d.error||"Request failed");return d};
 const hub=$("#hub"), front=$("#front");
-let me=null;
+let me=null,sgTimer=null;
 
 function showHub(){front.style.display="none";hub.style.display="block";if(!me)api("/api/me").then(enter).catch(()=>{})}
 function hideHub(){hub.style.display="none";front.style.display="block";$("#q").value="";stopGame()}
@@ -217,7 +179,8 @@ $("#exit").onclick=hideHub;
 function openTab(t){
   $$(".tab[data-t]").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
   $$(".panel").forEach(p=>p.classList.toggle("on",p.id===t));
-  if(t==="admin")loadAdmin();}
+  if(t==="admin")loadAdmin();
+  if(t==="suggest")loadSuggest();}
 $$(".tab[data-t]").forEach(b=>b.onclick=()=>openTab(b.dataset.t));
 
 /* ---- sign in / sign up ---- */
@@ -235,10 +198,13 @@ $("#af").onsubmit=async e=>{
 function enter(u){
   me=u;hub.classList.add("authed");$("#who").textContent="@"+u.name;
   $("#admintab").style.display=u.admin?"":"none";
+  clearInterval(sgTimer);
+  if(u.admin){pollSg();sgTimer=setInterval(pollSg,30000)}
   openTab("games");connectChat()}
 $("#logout").onclick=async()=>{
   try{await api("/api/logout",{})}catch{}
-  me=null;hub.classList.remove("authed");stopGame();if(cws){cws.close();cws=null}$("#log").innerHTML=""};
+  me=null;clearInterval(sgTimer);setSgBadge(0);
+  hub.classList.remove("authed");stopGame();if(cws){cws.close();cws=null}$("#log").innerHTML=""};
 
 /* ---- games ---- */
 let loop=null,keyH=null,rws=null;
@@ -250,13 +216,6 @@ function stopGame(){
   $("#stage").innerHTML="";
 }
 $("#glist").innerHTML=GAMES.map((g,i)=>`<div class="g" data-i="${i}"><div class="ic">${g.icon}</div><b>${g.name}</b></div>`).join("");
-function renderRecommendations(query=""){
-  const q=query.trim().toLowerCase();
-  const items=RECOMMENDATIONS.filter(g=>`${g.name} ${g.genre} ${g.desc}`.toLowerCase().includes(q));
-  $("#recList").innerHTML=items.length?items.map(g=>`<article class="rec-card"><div class="rec-top"><span class="rec-icon">${g.icon}</span><h3>${esc(g.name)}</h3></div><span class="rec-tag">${esc(g.genre)}</span><p>${esc(g.desc)}</p><a class="rec-link" href="${g.url}" target="_blank" rel="noopener noreferrer">View game ↗</a></article>`).join(""):'<p class="note">no games found — try a different search.</p>';
-}
-renderRecommendations();
-$("#recSearch").addEventListener("input",e=>renderRecommendations(e.target.value));
 $$(".g").forEach(el=>el.onclick=()=>{
   stopGame();const g=GAMES[el.dataset.i],st=$("#stage");
   if(g.url)st.innerHTML=`<iframe src="${g.url}" allowfullscreen></iframe>`;
@@ -310,7 +269,6 @@ function remote(st){
   }
 
   /* video: every frame is numbered; the page confirms each one back, and only draws the newest */
-  if(!REMOTE_WS){stat.textContent="Remote Chrome is not configured yet. Set REMOTE_WS in the server environment and restart the app.";return;}
   const ws=rws=new WebSocket(REMOTE_WS+"?token="+encodeURIComponent(me.token)),
         send=o=>ws.readyState===1&&ws.send(JSON.stringify(o));
   ws.binaryType="arraybuffer";
@@ -409,6 +367,61 @@ $("#pform").onsubmit=e=>{
   pFrame.src="/p?url="+encodeURIComponent(v);
 };
 
+/* ---- suggestions ---- */
+let sgFilter="all",sgItems=[],sgAdmin=false;
+const sgLabel={pending:"pending",approved:"added",rejected:"rejected"};
+const sgClass={pending:"b-mute",approved:"b-on",rejected:"b-ban"};
+function setSgBadge(n){$("#sgtab").textContent=n?"Suggestions ("+n+")":"Suggestions"}
+function pollSg(){api("/api/suggestions").then(d=>setSgBadge(d.pending)).catch(()=>{})}
+async function loadSuggest(){
+  let d;try{d=await api("/api/suggestions")}catch(err){$("#sglist").textContent=err.message;return}
+  sgItems=d.items;sgAdmin=d.admin;
+  $("#sglabel").textContent=sgAdmin?"All suggestions":"Your suggestions";
+  $("#sgfilters").style.display=sgAdmin?"":"none";
+  if(sgAdmin)setSgBadge(d.pending);
+  renderSuggest();
+}
+function renderSuggest(){
+  const list=sgItems.filter(s=>sgFilter==="all"||s.status===sgFilter);
+  $("#sglist").innerHTML=list.map(s=>`<div class="sg">
+    <h4>${esc(s.title)} <span class="badge ${sgClass[s.status]}">${sgLabel[s.status]}</span></h4>
+    <div class="meta">${sgAdmin?"by "+esc(s.by)+" · ":""}${new Date(s.ts).toLocaleString()}</div>
+    ${s.text?`<p>${esc(s.text)}</p>`:""}
+    ${s.note?`<div class="reply"><b>${s.status==="approved"?"Added:":"Admin:"}</b> ${esc(s.note)}</div>`:""}
+    ${sgAdmin?`<div class="acts">
+      ${s.status!=="approved"?`<button class="btn sm green" data-sg="approve" data-id="${s.id}">✓ Approve</button>`:""}
+      ${s.status!=="rejected"?`<button class="btn sm red" data-sg="reject" data-id="${s.id}">✕ Reject</button>`:""}
+      ${s.status!=="pending"?`<button class="btn sm gray" data-sg="reopen" data-id="${s.id}">Reopen</button>`:""}
+      <button class="btn sm gray" data-sg="delete" data-id="${s.id}">Delete</button></div>`:""}
+  </div>`).join("")||'<p class="note">Nothing here yet.</p>';
+}
+$("#sgf").onsubmit=async e=>{
+  e.preventDefault();const m=$("#sgm");m.style.color="";m.textContent="";
+  try{
+    await api("/api/suggest",{title:$("#sgt").value,text:$("#sgx").value});
+    $("#sgt").value="";$("#sgx").value="";
+    m.style.color="#5ad18a";m.textContent="Submitted! An admin will review it.";
+    loadSuggest();
+  }catch(err){m.style.color="#ff7b8f";m.textContent=err.message}
+};
+$("#sgfilters").onclick=e=>{
+  const b=e.target.closest("[data-f]");if(!b)return;
+  sgFilter=b.dataset.f;
+  $$("#sgfilters .tab").forEach(x=>x.classList.toggle("on",x===b));
+  renderSuggest();
+};
+$("#sglist").onclick=async e=>{
+  const b=e.target.closest("[data-sg]");if(!b)return;
+  const action=b.dataset.sg;let note="";
+  if(action==="delete"&&!confirm("Delete this suggestion?"))return;
+  if(action==="approve"||action==="reject"){
+    note=prompt(action==="approve"?"Optional note to the user (e.g. 'Added!'):":"Optional reason for the user:")
+    if(note===null)return;
+  }
+  try{await api("/api/admin/suggestion",{id:b.dataset.id,action,note})}catch(err){alert(err.message)}
+  loadSuggest();
+};
+
 /* ---- admin panel (only shown to jackwobbe; the server re-checks every request) ---- */
 let adminTimer=null;
 async function loadAdmin(){
@@ -429,7 +442,7 @@ async function loadAdmin(){
   <div class="bar"><input id="nd" placeholder="example.com"><button data-act="add" data-type="domain">Block site</button></div>
   <div>${d.blockedDomains.map(x=>`<span class="chip">${esc(x)}<span data-act="rm" data-type="domain" data-val="${esc(x)}">✕</span></span>`).join("")||'<span class="note">None yet. The built-in list is always active.</span>'}</div>
 
-  <h3>Blocked words (chat + searches)</h3>
+  <h3>Blocked words (chat + searches + suggestions)</h3>
   <div class="bar"><input id="nw" placeholder="word or phrase"><button data-act="add" data-type="word">Block word</button></div>
   <div>${d.blockedWords.map(x=>`<span class="chip">${esc(x)}<span data-act="rm" data-type="word" data-val="${esc(x)}">✕</span></span>`).join("")||'<span class="note">None yet.</span>'}</div>
 
