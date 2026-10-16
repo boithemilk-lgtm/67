@@ -1,97 +1,400 @@
-import Fastify from 'fastify';
-import fastifyStatic from '@fastify/static';
-import { WebSocketServer, WebSocket } from 'ws';
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { readFile, mkdir, appendFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import dns from 'node:dns/promises';
-import net from 'node:net';
-import https from 'node:https';
-import { load } from 'cheerio';
-import { checkUrl, checkChat, safeSearch } from './filter.js';
+import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import crypto from "node:crypto";
+import dns from "node:dns/promises";
+import net from "node:net";
+import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
+import { WebSocketServer } from "ws";
+import * as cheerio from "cheerio";
+import { checkUrl, checkChat, safeSearch } from "./filter.js";
 
-const __dirname=path.dirname(fileURLToPath(import.meta.url));
-const app=Fastify({logger:true, bodyLimit:1024*1024, trustProxy:false});
-const PORT=Number(process.env.PORT||8080);
-const HOST=process.env.HOST||'0.0.0.0';
-const SECRET=process.env.APP_SECRET;
-if(!SECRET || SECRET.length<32) { console.error('APP_SECRET must be set to a random secret of at least 32 characters.'); process.exit(1); }
-const ADMIN_NAME=(process.env.ADMIN_NAME||'jackwobbe').toLowerCase();
-const ADMIN_CODE=process.env.ADMIN_CODE||randomBytes(12).toString('hex');
-const REMOTE_WS=(process.env.REMOTE_WS||'').trim();
-const DATA_DIR=path.join(__dirname,'data');
-const DB_PATH=path.join(DATA_DIR,'db.json');
-let db={users:[],blockedDomains:[],blockedWords:[],events:[],chat:[]};
-const sockets=new Set();
-const sessionCookie='nova_session';
-const now=()=>Date.now();
-const safeEqual=(a,b)=>{const x=Buffer.from(String(a));const y=Buffer.from(String(b));return x.length===y.length&&timingSafeEqual(x,y)};
-const sign=(s)=>createHmac('sha256',SECRET).update(s).digest('base64url');
-function tokenFor(user){const payload=Buffer.from(JSON.stringify({id:user.id,name:user.name,admin:!!user.admin,exp:now()+7*864e5})).toString('base64url');return payload+'.'+sign(payload)}
-function verifyToken(token){try{const [p,s]=String(token||'').split('.');if(!p||!s||!safeEqual(sign(p),s))return null;const v=JSON.parse(Buffer.from(p,'base64url').toString());if(v.exp<now())return null;return v}catch{return null}}
-function cookieToken(req){const raw=req.headers.cookie||'';const m=raw.split(';').map(x=>x.trim()).find(x=>x.startsWith(sessionCookie+'='));return m?decodeURIComponent(m.slice(sessionCookie.length+1)):''}
-function currentUser(req){const t=cookieToken(req);const v=verifyToken(t);if(!v)return null;return db.users.find(u=>u.id===v.id&&!u.banned)||null}
-function publicUser(u){return {id:u.id,name:u.name,admin:!!u.admin,created:u.created,token:tokenFor(u)}}
-async function save(){await mkdir(DATA_DIR,{recursive:true});await import('node:fs/promises').then(fs=>fs.writeFile(DB_PATH,JSON.stringify(db,null,2),'utf8'))}
-async function logEvent(kind,who,detail){db.events.unshift({ts:now(),kind,who:who||'system',detail:String(detail||'').slice(0,500)});db.events=db.events.slice(0,500);await save().catch(()=>{})}
-function needAuth(req,reply){const u=currentUser(req);if(!u){reply.code(401).send({error:'Please sign in first.'});return null}return u}
-function needAdmin(req,reply){const u=needAuth(req,reply);if(!u)return null;if(!u.admin){reply.code(403).send({error:'Admin access required.'});return null}return u}
-function pushChat(m){db.chat.push(m);db.chat=db.chat.slice(-100);const data=JSON.stringify({type:'msg',...m});for(const ws of sockets)if(ws.readyState===WebSocket.OPEN)ws.send(data);save().catch(()=>{})}
-function sendAll(obj){const s=JSON.stringify(obj);for(const ws of sockets)if(ws.readyState===WebSocket.OPEN)ws.send(s)}
-await mkdir(DATA_DIR,{recursive:true});
-try{db=JSON.parse(await readFile(DB_PATH,'utf8'))}catch{await save()}
-if(!db.users.some(u=>u.name.toLowerCase()===ADMIN_NAME))console.log(`Admin setup code (keep private): ${ADMIN_CODE}`);
-await app.register(fastifyStatic,{root:path.join(__dirname,'public'),prefix:'/'});
-app.get('/config.js',async(_req,reply)=>reply.type('application/javascript').send(`window.NOVA_REMOTE_WS=${JSON.stringify(REMOTE_WS)};`));
-app.get('/health',async()=>({ok:true,service:'nova-arcade'}));
-app.get('/api/me',async(req,reply)=>{const u=currentUser(req);if(!u)return reply.code(401).send({error:'Not signed in'});return publicUser(u)});
-app.post('/api/signup',async(req,reply)=>{
- const name=String(req.body?.username||'').trim();const pass=String(req.body?.password||'');const code=String(req.body?.code||'');
- if(!/^[a-zA-Z0-9_]{3,16}$/.test(name))return reply.code(400).send({error:'Username must be 3–16 letters, numbers, or underscores.'});
- if(pass.length<8||pass.length>200)return reply.code(400).send({error:'Password must be at least 8 characters.'});
- if(db.users.some(u=>u.name.toLowerCase()===name.toLowerCase()))return reply.code(409).send({error:'That username is already taken.'});
- const admin=name.toLowerCase()===ADMIN_NAME;
- if(admin&&!safeEqual(code,ADMIN_CODE))return reply.code(403).send({error:'Invalid admin setup code.'});
- const salt=randomBytes(16).toString('hex');const hash=scryptSync(pass,salt,64).toString('hex');const u={id:randomBytes(12).toString('hex'),name,salt,hash,admin,created:now(),banned:false,muted:false};db.users.push(u);await save();reply.header('Set-Cookie',`${sessionCookie}=${encodeURIComponent(tokenFor(u))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800${req.protocol==='https' ? '; Secure':''}`);await logEvent('signup',name,'Account created');return publicUser(u);
-});
-app.post('/api/login',async(req,reply)=>{
- const name=String(req.body?.username||'').trim();const pass=String(req.body?.password||'');const u=db.users.find(x=>x.name.toLowerCase()===name.toLowerCase());
- if(!u||u.banned||!safeEqual(scryptSync(pass,u.salt,64).toString('hex'),u.hash))return reply.code(401).send({error:'Username or password is incorrect.'});
- reply.header('Set-Cookie',`${sessionCookie}=${encodeURIComponent(tokenFor(u))}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800${req.protocol==='https' ? '; Secure':''}`);return publicUser(u);
-});
-app.post('/api/logout',async(req,reply)=>{reply.header('Set-Cookie',`${sessionCookie}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);return {ok:true}});
-app.get('/api/admin/overview',async(req,reply)=>{if(!needAdmin(req,reply))return;return {users:db.users.map(u=>({name:u.name,admin:!!u.admin,banned:!!u.banned,muted:!!u.muted,created:u.created})),blockedDomains:db.blockedDomains,blockedWords:db.blockedWords,events:db.events}});
-app.post('/api/admin/user',async(req,reply)=>{const admin=needAdmin(req,reply);if(!admin)return;const name=String(req.body?.name||'');const action=String(req.body?.action||'');const u=db.users.find(x=>x.name===name);if(!u)return reply.code(404).send({error:'User not found'});if(u.admin)return reply.code(400).send({error:'Admin accounts cannot be changed here.'});if(!['ban','unban','mute','unmute'].includes(action))return reply.code(400).send({error:'Unknown action'});if(action==='ban')u.banned=true;if(action==='unban')u.banned=false;if(action==='mute')u.muted=true;if(action==='unmute')u.muted=false;await save();await logEvent('user-'+action,admin.name,name);return {ok:true}});
-app.post('/api/admin/list',async(req,reply)=>{const admin=needAdmin(req,reply);if(!admin)return;const type=req.body?.type==='domain'?'blockedDomains':req.body?.type==='word'?'blockedWords':null;const value=String(req.body?.value||'').trim().toLowerCase();if(!type||!value||value.length>120)return reply.code(400).send({error:'Invalid list item'});if(req.body.action==='add'){if(!db[type].includes(value))db[type].push(value)}else if(req.body.action==='remove')db[type]=db[type].filter(x=>x!==value);else return reply.code(400).send({error:'Unknown action'});await save();return {ok:true}});
-app.post('/api/admin/chat',async(req,reply)=>{const admin=needAdmin(req,reply);if(!admin)return;const {action,id}=req.body||{};if(action==='clear'){db.chat=[];sendAll({type:'clear'});await save();return {ok:true}}if(action==='delete'){db.chat=db.chat.filter(m=>m.id!==id);sendAll({type:'del',id});await save();return {ok:true}}return reply.code(400).send({error:'Unknown action'} )});
+/* ================= CONFIG ================= */
+// This text MUST be identical to APP_SECRET in server.py. Change it to anything you like (in both files).
+const SECRET = process.env.APP_SECRET || "novaarcade-k29xqpz7-change-me";
+const ADMIN_NAME = "jackwobbe";
+const RESERVED = ["admin", "administrator", "moderator", "mod", "system", "owner", "staff"];
+/* ========================================== */
 
-// Basic public HTTP proxy with strict URL checks and private-network blocking.
-function isPrivateIp(ip){if(net.isIPv4(ip)){const [a,b]=ip.split('.').map(Number);return a===10||a===127||a===0||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===100&&b>=64&&b<=127)||a>=224}if(net.isIPv6(ip)){const s=ip.toLowerCase();return s==='::1'||s==='::'||s.startsWith('fc')||s.startsWith('fd')||s.startsWith('fe8')||s.startsWith('fe9')||s.startsWith('fea')||s.startsWith('feb')||s.startsWith('::ffff:127.')||s.startsWith('::ffff:10.')}return true}
-async function safeTarget(raw){const result=checkUrl(raw,db.blockedDomains,db.blockedWords);if(!result.ok)throw new Error(result.reason);const u=result.url;if(u.username||u.password)throw new Error('URLs with embedded credentials are blocked.');const ips=await dns.lookup(u.hostname,{all:true,verbatim:true}).catch(()=>[]);if(!ips.length||ips.some(x=>isPrivateIp(x.address)))throw new Error('That host is not allowed.');return u}
-app.get('/p',async(req,reply)=>{
- let target;try{target=await safeTarget(String(req.query?.url||''))}catch(e){return reply.code(400).type('text/plain').send('Blocked: '+e.message)}
- try{
-  const response=await fetch(target,{redirect:'manual',signal:AbortSignal.timeout(12000),headers:{'user-agent':'Mozilla/5.0 NovaArcadeProxy/1.0','accept':'text/html,application/xhtml+xml'}});
-  if(response.status>=300&&response.status<400){const loc=response.headers.get('location');if(!loc)return reply.code(502).send('Redirect blocked');const next=new URL(loc,target);await safeTarget(next.href);return reply.redirect('/p?url='+encodeURIComponent(next.href),302)}
-  const type=response.headers.get('content-type')||'';if(!type.includes('text/html'))return reply.code(415).type('text/plain').send('This proxy only displays HTML pages.');
-  let html=await response.text();if(html.length>2_000_000)return reply.code(413).send('Page is too large.');
-  const $=load(html);$('base').remove();$('script').each((_,el)=>{const src=$(el).attr('src');if(src){try{$(el).attr('src','/p?url='+encodeURIComponent(new URL(src,target).href))}catch{}}});$('link[href],img[src],iframe[src],source[src]').each((_,el)=>{const attr=$(el).is('link')?'href':'src';try{const raw=$(el).attr(attr);if(raw&&!raw.startsWith('data:'))$(el).attr(attr,'/p?url='+encodeURIComponent(new URL(raw,target).href))}catch{}});$('a[href],form[action]').each((_,el)=>{const attr=$(el).is('form')?'action':'href';try{const raw=$(el).attr(attr);if(raw&&!raw.startsWith('#')&&!raw.startsWith('javascript:'))$(el).attr(attr,'/p?url='+encodeURIComponent(new URL(raw,target).href))}catch{}});
-  reply.header('content-security-policy',"default-src 'self' data: blob: https: http: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'");return reply.type('text/html; charset=utf-8').send($.html());
- }catch(e){return reply.code(502).type('text/plain').send('Could not load that page: '+e.message)}
+const publicPath = fileURLToPath(new URL("./public/", import.meta.url));
+
+/* ================= STORAGE ================= */
+const DATA_DIR = process.env.DATA_DIR || fileURLToPath(new URL("./data/", import.meta.url));
+try { mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+const DB_FILE = DATA_DIR + "/db.json";
+let db = { users: {}, blockedDomains: [], blockedWords: [], suggestions: [] };
+try { db = { ...db, ...JSON.parse(readFileSync(DB_FILE, "utf8")) }; } catch {}
+const save = () => { try { writeFileSync(DB_FILE, JSON.stringify(db)); } catch (e) { console.error("Could not save data:", e.message); } };
+
+const events = [];
+const addLog = (kind, who, detail) => {
+  events.unshift({ ts: Date.now(), kind, who, detail: String(detail).slice(0, 200) });
+  if (events.length > 200) events.length = 200;
+};
+
+/* ================= AUTH ================= */
+const ADMIN_CODE = process.env.ADMIN_CODE || crypto.randomBytes(4).toString("hex");
+const getUser = (n) => db.users[String(n).toLowerCase()];
+if (!getUser(ADMIN_NAME)) console.log(`Admin setup code for "${ADMIN_NAME}": ${ADMIN_CODE}  (only needed once, when you create that account)`);
+
+const sign = (p) => crypto.createHmac("sha256", SECRET).update(p).digest("hex");
+const makeToken = (name) => {
+  const p = Buffer.from(JSON.stringify({ u: name, exp: Date.now() + 7 * 864e5 })).toString("base64url");
+  return p + "." + sign(p);
+};
+function readToken(t) {
+  if (!t || !t.includes(".")) return null;
+  const [p, s] = t.split(".");
+  const good = sign(p);
+  if (!s || s.length !== good.length || !crypto.timingSafeEqual(Buffer.from(s), Buffer.from(good))) return null;
+  try { const o = JSON.parse(Buffer.from(p, "base64url").toString()); return o.exp > Date.now() ? o.u : null; } catch { return null; }
+}
+const parseCookies = (h) =>
+  Object.fromEntries((h || "").split(";").map((s) => s.trim().split(/=(.*)/s).slice(0, 2)).filter((x) => x[0]));
+const authReq = (req) => {
+  const name = readToken(parseCookies(req.headers.cookie).sid);
+  const u = name && getUser(name);
+  return u && !u.banned ? u : null;
+};
+const isAdmin = (u) => !!u && u.name.toLowerCase() === ADMIN_NAME;
+const setSession = (reply, req, token) =>
+  reply.header("set-cookie", `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800${req.protocol === "https" ? "; Secure" : ""}`);
+const keyOk = (req) => {
+  const k = String(req.headers["x-key"] || "");
+  return k.length === SECRET.length && crypto.timingSafeEqual(Buffer.from(k), Buffer.from(SECRET));
+};
+
+const hashPw = (pw, salt = crypto.randomBytes(16).toString("hex")) =>
+  salt + ":" + crypto.scryptSync(pw, salt, 64).toString("hex");
+const checkPw = (pw, stored) => {
+  const [salt, h] = stored.split(":");
+  const t = hashPw(pw, salt).split(":")[1];
+  return h.length === t.length && crypto.timingSafeEqual(Buffer.from(h), Buffer.from(t));
+};
+
+/* ================= RATE LIMITS ================= */
+const mkLimiter = (max) => {
+  const hits = new Map();
+  setInterval(() => hits.clear(), 60_000);
+  return (ip) => { const n = (hits.get(ip) || 0) + 1; hits.set(ip, n); return n > max; };
+};
+const proxyLimited = mkLimiter(1500);
+const authLimited = mkLimiter(15);
+
+/* ================= CHAT ================= */
+const chat = new WebSocketServer({ noServer: true });
+let history = [], nextId = 1;
+const sys = (t) => JSON.stringify({ type: "sys", t });
+const broadcast = (o) => { const s = JSON.stringify(o); for (const c of chat.clients) if (c.readyState === 1) c.send(s); };
+const kick = (name) => { for (const c of chat.clients) if (c.uname.toLowerCase() === name.toLowerCase()) c.close(4000); };
+
+chat.on("connection", (ws) => {
+  ws.send(JSON.stringify({ type: "hist", msgs: history }));
+  let last = 0;
+  ws.on("message", (raw) => {
+    const u = getUser(ws.uname);
+    if (!u || u.banned) return ws.close();
+    if (u.muted) return ws.send(sys("You are muted by an admin."));
+    if (Date.now() - last < 800) return;
+    last = Date.now();
+    let t;
+    try { t = String(JSON.parse(raw.toString()).t).trim().slice(0, 300); } catch { return; }
+    if (!t) return;
+    if (checkChat(t, db.blockedWords, db.blockedDomains)) {
+      addLog("chat-block", u.name, t);
+      return ws.send(sys("Message blocked by the chat filter."));
+    }
+    const m = { id: nextId++, u: u.name, t, ts: Date.now(), admin: isAdmin(u) };
+    history.push(m);
+    if (history.length > 60) history.shift();
+    broadcast({ type: "msg", ...m });
+  });
 });
 
-const wss=new WebSocketServer({noServer:true});
-app.server.on('upgrade',(req,socket,head)=>{
- const pathname=new URL(req.url,'http://localhost').pathname;
- if(pathname!=='/chat'){socket.destroy();return}
- const u=verifyToken(new URL(req.url,'http://localhost').searchParams.get('token'))||currentUser({headers:req.headers});
- if(!u){socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');socket.destroy();return}
- wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws,u));
+/* ================= PROXY HELPERS ================= */
+const isPrivate = (ip) =>
+  /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|::ffff:|fc|fd|fe80)/i.test(ip);
+async function isSafeHost(host) {
+  try {
+    const ips = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true })).map((a) => a.address);
+    return ips.length > 0 && ips.every((ip) => !isPrivate(ip));
+  } catch { return false; }
+}
+const proxify = (u, base) => { try { return "/p?url=" + encodeURIComponent(new URL(u, base).href); } catch { return u; } };
+const skip = /^(#|data:|javascript:|mailto:|tel:|blob:|about:)/i;
+const shim = (base) => `<script>(()=>{const B=${JSON.stringify(base)};
+const P=u=>{try{u=String(u);if(u.startsWith("/p?url=")||/^(data:|blob:)/.test(u))return u;
+return "/p?url="+encodeURIComponent(new URL(u,B).href)}catch{return u}};
+const f=window.fetch;window.fetch=(i,o)=>f(typeof i==="string"?P(i):(i instanceof URL?P(i.href):i),o);
+const x=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u,...a){return x.call(this,m,P(u),...a)};
+const wo=window.open;window.open=(u,...a)=>wo.call(window,u?P(u):u,...a);
+})()</script>`;
+function rewriteCss(css, base) {
+  return css
+    .replace(/url\(\s*(['"]?)(?!data:)([^)'"]+)\1\s*\)/g, (_, q, u) => `url(${q}${proxify(u.trim(), base)}${q})`)
+    .replace(/@import\s+(['"])([^'"]+)\1/g, (_, q, u) => `@import ${q}${proxify(u, base)}${q}`);
+}
+const blockedPage = (r) => `<!doctype html><meta charset=utf-8><title>Blocked</title><body style="font-family:system-ui;background:#0a0b14;color:#e8ebf7;display:grid;place-items:center;height:100vh;margin:0"><div style="text-align:center"><div style="font-size:56px">🚫</div><h2>This page is blocked</h2><p style="color:#9aa2c8">${r}</p></div>`;
+
+/* ================= SERVER ================= */
+const fastify = Fastify({
+  trustProxy: true,
+  serverFactory: (handler) => {
+    const s = createServer((req, res) => handler(req, res));
+    s.on("upgrade", (req, socket, head) => {
+      if (!req.url.startsWith("/chat")) return socket.destroy();
+      const name = readToken(parseCookies(req.headers.cookie).sid);
+      const u = name && getUser(name);
+      if (!u || u.banned) { socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n"); return socket.destroy(); }
+      chat.handleUpgrade(req, socket, head, (ws) => { ws.uname = u.name; chat.emit("connection", ws); });
+    });
+    return s;
+  },
 });
-wss.on('connection',(ws,u)=>{const user=db.users.find(x=>x.id===u.id);if(!user||user.banned){ws.close(1008,'Banned');return}sockets.add(ws);ws.send(JSON.stringify({type:'hist',msgs:db.chat}));ws.on('message',async raw=>{try{const parsed=JSON.parse(raw.toString());const fresh=db.users.find(x=>x.id===u.id);if(!fresh||fresh.banned)return ws.close(1008,'Banned');if(fresh.muted){ws.send(JSON.stringify({type:'sys',t:'You are muted.'}));return}const check=checkChat(parsed.t,db.blockedWords);if(!check.ok){ws.send(JSON.stringify({type:'sys',t:check.reason}));return}pushChat({id:randomBytes(8).toString('hex'),u:fresh.name,t:check.text,admin:!!fresh.admin,ts:now()})}catch{}});ws.on('close',()=>sockets.delete(ws))});
-// Optional remote browser websocket is hosted by server.py on its own port/tunnel.
-app.addHook('onClose',async()=>{for(const ws of sockets)ws.close()});
-await app.listen({port:PORT,host:HOST});
-console.log(`Nova Arcade listening on http://${HOST}:${PORT}`);
-if(REMOTE_WS)console.log('Remote Chrome endpoint configured.');else console.log('Remote Chrome is disabled until REMOTE_WS is configured.');
+fastify.register(fastifyStatic, { root: publicPath });
+
+/* ---------- accounts ---------- */
+fastify.post("/api/signup", async (req, reply) => {
+  if (authLimited(req.ip)) return reply.code(429).send({ error: "Too many attempts. Wait a minute." });
+  const { username, password, code } = req.body || {};
+  const name = String(username || "").trim(), pw = String(password || "");
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) return reply.code(400).send({ error: "Username: 3-16 letters, numbers or _" });
+  if (pw.length < 6 || pw.length > 100) return reply.code(400).send({ error: "Password must be at least 6 characters" });
+  const lower = name.toLowerCase();
+  if (getUser(lower)) return reply.code(400).send({ error: "That username is taken" });
+  if (lower === ADMIN_NAME) {
+    if (String(code || "") !== ADMIN_CODE) return reply.code(403).send({ error: "Invalid admin setup code" });
+  } else if (RESERVED.includes(lower) || checkChat(name, db.blockedWords, [])) {
+    return reply.code(400).send({ error: "That username isn't allowed" });
+  }
+  db.users[lower] = { name, hash: hashPw(pw), created: Date.now(), muted: false, banned: false };
+  save();
+  const token = makeToken(name);
+  setSession(reply, req, token);
+  return { name, admin: lower === ADMIN_NAME, token };
+});
+
+fastify.post("/api/login", async (req, reply) => {
+  if (authLimited(req.ip)) return reply.code(429).send({ error: "Too many attempts. Wait a minute." });
+  const { username, password } = req.body || {};
+  const u = getUser(String(username || "").trim());
+  if (!u || !checkPw(String(password || ""), u.hash)) return reply.code(401).send({ error: "Wrong username or password" });
+  if (u.banned) return reply.code(403).send({ error: "This account is banned" });
+  const token = makeToken(u.name);
+  setSession(reply, req, token);
+  return { name: u.name, admin: isAdmin(u), token };
+});
+
+fastify.post("/api/logout", async (req, reply) => {
+  reply.header("set-cookie", "sid=; HttpOnly; Path=/; Max-Age=0");
+  return { ok: true };
+});
+
+fastify.get("/api/me", async (req, reply) => {
+  const u = authReq(req);
+  if (!u) return reply.code(401).send({ error: "Not signed in" });
+  return { name: u.name, admin: isAdmin(u), token: makeToken(u.name) };
+});
+
+/* ---------- suggestions ---------- */
+const lastSuggest = new Map();
+
+fastify.post("/api/suggest", async (req, reply) => {
+  const u = authReq(req);
+  if (!u) return reply.code(401).send({ error: "Please sign in" });
+  const title = String((req.body || {}).title || "").trim().slice(0, 80);
+  const text = String((req.body || {}).text || "").trim().slice(0, 500);
+  if (title.length < 3) return reply.code(400).send({ error: "Give your suggestion a title (at least 3 characters)" });
+  if (checkChat(title + " " + text, db.blockedWords, db.blockedDomains)) {
+    addLog("suggest-block", u.name, title);
+    return reply.code(400).send({ error: "Your suggestion was blocked by the filter" });
+  }
+  const key = u.name.toLowerCase();
+  if (Date.now() - (lastSuggest.get(key) || 0) < 30_000) return reply.code(429).send({ error: "Please wait 30 seconds between suggestions" });
+  if (db.suggestions.filter((s) => s.by.toLowerCase() === key && s.status === "pending").length >= 5)
+    return reply.code(400).send({ error: "You already have 5 suggestions waiting for review" });
+  const id = db.suggestions.reduce((m, s) => Math.max(m, s.id), 0) + 1;
+  db.suggestions.push({ id, by: u.name, title, text, ts: Date.now(), status: "pending", note: "" });
+  lastSuggest.set(key, Date.now());
+  save();
+  return { ok: true };
+});
+
+fastify.get("/api/suggestions", async (req, reply) => {
+  const u = authReq(req);
+  if (!u) return reply.code(401).send({ error: "Please sign in" });
+  const adminView = isAdmin(u);
+  const items = (adminView ? db.suggestions : db.suggestions.filter((s) => s.by.toLowerCase() === u.name.toLowerCase()))
+    .slice().reverse();
+  return { items, admin: adminView, pending: adminView ? db.suggestions.filter((s) => s.status === "pending").length : 0 };
+});
+
+/* ---------- admin ---------- */
+const admin = (req, reply) => {
+  const u = authReq(req);
+  if (!u || !isAdmin(u)) { reply.code(403).send({ error: "Admins only" }); return null; }
+  return u;
+};
+
+fastify.post("/api/admin/suggestion", async (req, reply) => {
+  if (!admin(req, reply)) return;
+  const { id, action, note } = req.body || {};
+  const i = db.suggestions.findIndex((s) => s.id === Number(id));
+  if (i < 0) return reply.code(404).send({ error: "No such suggestion" });
+  const s = db.suggestions[i];
+  if (action === "approve") { s.status = "approved"; s.note = String(note || "").slice(0, 200); }
+  else if (action === "reject") { s.status = "rejected"; s.note = String(note || "").slice(0, 200); }
+  else if (action === "reopen") { s.status = "pending"; s.note = ""; }
+  else if (action === "delete") db.suggestions.splice(i, 1);
+  else return reply.code(400).send({ error: "Unknown action" });
+  save();
+  return { ok: true };
+});
+
+fastify.get("/api/admin/overview", async (req, reply) => {
+  if (!admin(req, reply)) return;
+  const online = new Set([...chat.clients].map((c) => c.uname.toLowerCase()));
+  return {
+    users: Object.values(db.users).map((u) => ({
+      name: u.name, created: u.created, muted: !!u.muted, banned: !!u.banned,
+      online: online.has(u.name.toLowerCase()), admin: isAdmin(u),
+    })),
+    blockedDomains: db.blockedDomains, blockedWords: db.blockedWords, events,
+  };
+});
+
+fastify.post("/api/admin/user", async (req, reply) => {
+  if (!admin(req, reply)) return;
+  const { name, action } = req.body || {};
+  const u = getUser(name);
+  if (!u) return reply.code(404).send({ error: "No such user" });
+  if (isAdmin(u)) return reply.code(400).send({ error: "You can't do that to the admin account" });
+  if (action === "mute") u.muted = true;
+  else if (action === "unmute") u.muted = false;
+  else if (action === "ban") { u.banned = true; kick(u.name); }
+  else if (action === "unban") u.banned = false;
+  else if (action === "delete") { delete db.users[u.name.toLowerCase()]; kick(u.name); }
+  else return reply.code(400).send({ error: "Unknown action" });
+  save();
+  return { ok: true };
+});
+
+fastify.post("/api/admin/list", async (req, reply) => {
+  if (!admin(req, reply)) return;
+  const { type, action, value } = req.body || {};
+  let v = String(value || "").trim().toLowerCase();
+  const key = type === "domain" ? "blockedDomains" : type === "word" ? "blockedWords" : null;
+  if (!key || !v) return reply.code(400).send({ error: "Bad request" });
+  if (type === "domain") v = v.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  if (action === "add") { if (!db[key].includes(v)) db[key].push(v); }
+  else if (action === "remove") db[key] = db[key].filter((x) => x !== v);
+  else return reply.code(400).send({ error: "Bad request" });
+  save();
+  return { ok: true };
+});
+
+fastify.post("/api/admin/chat", async (req, reply) => {
+  if (!admin(req, reply)) return;
+  const { action, id } = req.body || {};
+  if (action === "clear") { history = []; broadcast({ type: "clear" }); }
+  else if (action === "delete") { history = history.filter((m) => m.id !== Number(id)); broadcast({ type: "del", id: Number(id) }); }
+  else return reply.code(400).send({ error: "Bad request" });
+  return { ok: true };
+});
+
+/* ---------- used by server.py (Chrome game) ---------- */
+fastify.get("/api/sync", async (req, reply) => {
+  if (!keyOk(req)) return reply.code(403).send({ error: "no" });
+  return {
+    domains: db.blockedDomains, words: db.blockedWords,
+    banned: Object.values(db.users).filter((u) => u.banned).map((u) => u.name.toLowerCase()),
+  };
+});
+fastify.post("/api/log", async (req, reply) => {
+  if (!keyOk(req)) return reply.code(403).send({ error: "no" });
+  const { user, url, reason } = req.body || {};
+  addLog("chrome-block", user || "?", `${url} (${reason})`);
+  return { ok: true };
+});
+
+/* ---------- proxy ---------- */
+fastify.get("/p", async (req, reply) => {
+  const me = authReq(req);
+  if (!me) return reply.code(401).type("text/html").send(blockedPage("Please sign in first."));
+  if (proxyLimited(req.ip)) return reply.code(429).send("Too many requests. Wait a minute and try again.");
+
+  let target;
+  try {
+    if (req.query.__u) {
+      target = new URL(req.query.__u);
+      for (const [k, v] of Object.entries(req.query)) if (k !== "__u") target.searchParams.set(k, v);
+    } else target = new URL(req.query.url);
+  } catch { return reply.code(400).send("Bad URL"); }
+  if (!/^https?:$/.test(target.protocol)) return reply.code(400).send("Bad protocol");
+
+  const bad = checkUrl(target.href, db.blockedDomains, db.blockedWords);
+  if (bad) {
+    if (["document", "iframe", "frame"].includes(req.headers["sec-fetch-dest"])) addLog("proxy-block", me.name, target.href);
+    return reply.code(403).type("text/html").send(blockedPage(bad));
+  }
+  if (!(await isSafeHost(target.hostname))) return reply.code(403).send("Blocked host");
+  safeSearch(target);
+
+  let r;
+  try {
+    r = await fetch(target, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        "user-agent": req.headers["user-agent"] || "Mozilla/5.0",
+        accept: req.headers.accept || "*/*",
+        "accept-language": req.headers["accept-language"] || "en-US,en;q=0.9",
+      },
+    });
+  } catch { return reply.code(502).send("Could not reach that site."); }
+
+  const loc = r.headers.get("location");
+  if (r.status >= 300 && r.status < 400 && loc) return reply.redirect(proxify(loc, target.href));
+
+  const type = r.headers.get("content-type") || "application/octet-stream";
+  reply.code(r.status).header("content-type", type);
+
+  if (type.includes("text/html")) {
+    const $ = cheerio.load(await r.text());
+    const base = target.href;
+    const rewriteAttr = (sel, attr) => $(sel).each((_, el) => {
+      const v = $(el).attr(attr);
+      if (v && !skip.test(v)) $(el).attr(attr, proxify(v, base));
+    });
+    [["a","href"],["area","href"],["link","href"],["script","src"],["img","src"],["iframe","src"],
+     ["source","src"],["video","src"],["video","poster"],["audio","src"],["embed","src"]].forEach(([s, a]) => rewriteAttr(s, a));
+    $("[srcset]").each((_, el) => {
+      const out = $(el).attr("srcset").split(",").map((part) => {
+        const [u, ...rest] = part.trim().split(/\s+/);
+        return [skip.test(u) ? u : proxify(u, base), ...rest].join(" ");
+      });
+      $(el).attr("srcset", out.join(", "));
+    });
+    $("style").each((_, el) => $(el).text(rewriteCss($(el).text(), base)));
+    $("[style]").each((_, el) => $(el).attr("style", rewriteCss($(el).attr("style"), base)));
+    $("form").each((_, el) => {
+      const form = $(el);
+      const action = new URL(form.attr("action") || "", base).href;
+      form.attr("action", "/p").attr("method", "get");
+      form.prepend(`<input type="hidden" name="__u" value="${action.replace(/"/g, "&quot;")}">`);
+    });
+    $("[integrity], [nonce]").removeAttr("integrity").removeAttr("nonce");
+    $("meta[http-equiv]").remove();
+    $("base").remove();
+    $("head").prepend(shim(base));
+    return reply.send($.html());
+  }
+  if (type.includes("text/css")) return reply.send(rewriteCss(await r.text(), target.href));
+  return reply.send(Buffer.from(await r.arrayBuffer()));
+});
+
+const port = Number(process.env.PORT) || 8080;
+await fastify.listen({ port, host: "0.0.0.0" });
+console.log("Running on port " + port);
